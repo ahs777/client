@@ -51,7 +51,12 @@
 
                     <div id="google_translate_element"></div>
 
+                    <?php if (isset($_SESSION["loggedin"]) && $_SESSION["loggedin"] === true) { ?>
+                    <a class="btn btn-primary py-2 px-4 ml-auto d-none d-lg-block" href="../client/logout.php">Logout</a>
+                    <?php } else { ?>
                     <a class="btn btn-primary py-2 px-4 ml-auto d-none d-lg-block" href="../client/login.php">Login</a>
+                    <?php } ?>
+
                 </div>
             </nav>
         </div>

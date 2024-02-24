@@ -1,3 +1,146 @@
+<?php
+// google login start
+require('./config.php');
+include("conn.php");
+$login_url = $client->createAuthUrl();
+/* 
+ * After obtaining permission from the user,
+ * Google will redirect to the login.php with the "code" query parameter.
+*/
+if (isset($_GET['code'])):
+
+  session_start();
+  $token = $client->fetchAccessTokenWithAuthCode($_GET['code']);
+  if(isset($token['error'])){
+    header('Location: login.php');
+    exit;
+  }
+  $_SESSION['token'] = $token;
+  $_SESSION["loggedin"] = true;
+
+  /* -- Inserting the user data into the database -- */
+
+  # Fetching the user data from the google account
+  $client->setAccessToken($token);
+  $google_oauth = new Google_Service_Oauth2($client);
+  $user_info = $google_oauth->userinfo->get();
+
+  $google_id = trim($user_info['id']);
+  $f_name = trim($user_info['given_name']);
+  $l_name = trim($user_info['family_name']);
+  $email = trim($user_info['email']);
+  $gender = trim($user_info['gender']);
+  $local = trim($user_info['local']);
+  $picture = trim($user_info['picture']);
+  # Checking whether the email already exists in our database.
+  $check_email = $conn->prepare("SELECT `email` FROM `google_auth` WHERE `email`=?");
+  $check_email->bind_param("s", $email);
+  $check_email->execute();
+  $check_email->store_result();
+
+  if($check_email->num_rows === 0){
+    # Inserting the new user into the database
+    $query_template = "INSERT INTO `google_auth` (`oauth_uid`, `first_name`, `last_name`,`email`,`profile_pic`,`gender`,`local`) VALUES (?,?,?,?,?,?,?)";
+    $insert_stmt = $conn->prepare($query_template);
+    $insert_stmt->bind_param("sssssss", $google_id, $f_name, $l_name, $email, $gender, $local, $picture);
+    if(!$insert_stmt->execute()){
+      echo "Failed to insert user.";
+      exit;
+    }
+  }
+
+  header('Location: index.php');
+  exit;
+
+endif;
+//google login end
+
+// Check if the user is already logged in, if yes then redirect him to welcome page
+if(isset($_SESSION["loggedin"]) && $_SESSION["loggedin"] === true){
+    header("location: index.php");
+    exit;
+}
+ 
+// Include config file
+require_once "conn.php";
+ 
+// Define variables and initialize with empty values
+$username = $password = "";
+$username_err = $password_err = $login_err = "";
+ 
+// Processing form data when form is submitted
+if($_SERVER["REQUEST_METHOD"] == "POST"){
+ 
+    // Check if username is empty
+    if(empty(trim($_POST["username"]))){
+        $username_err = "Please enter username.";
+    } else{
+        $username = trim($_POST["username"]);
+    }
+    
+    // Check if password is empty
+    if(empty(trim($_POST["password"]))){
+        $password_err = "Please enter your password.";
+    } else{
+        $password = trim($_POST["password"]);
+    }
+    
+    // Validate credentials
+    if(empty($username_err) && empty($password_err)){
+        // Prepare a select statement
+        $sql = "SELECT u_id, username, u_password FROM front_users WHERE username = ?";
+        
+        if($stmt = mysqli_prepare($conn, $sql)){
+            // Bind variables to the prepared statement as parameters
+            mysqli_stmt_bind_param($stmt, "s", $param_username);
+            
+            // Set parameters
+            $param_username = $username;
+            
+            // Attempt to execute the prepared statement
+            if(mysqli_stmt_execute($stmt)){
+                // Store result
+                mysqli_stmt_store_result($stmt);
+                
+                // Check if username exists, if yes then verify password
+                if(mysqli_stmt_num_rows($stmt) == 1){                    
+                    // Bind result variables
+                    mysqli_stmt_bind_result($stmt, $id, $username, $hashed_password);
+                    if(mysqli_stmt_fetch($stmt)){
+                        if(password_verify($password, $hashed_password)){
+                            // Password is correct, so start a new session
+                            session_start();
+                            
+                            // Store data in session variables
+                            $_SESSION["loggedin"] = true;
+                            $_SESSION["id"] = $id;
+                            $_SESSION["username"] = $username;                            
+                            
+                            // Redirect user to welcome page
+                            header("location: index.php");
+                        } else{
+                            // Password is not valid, display a generic error message
+                            $login_err = "Invalid username or password.";
+                        }
+                    }
+                } else{
+                    // Username doesn't exist, display a generic error message
+                    $login_err = "Invalid username or password.";
+                }
+            } else{
+                echo "Oops! Something went wrong. Please try again later.";
+            }
+
+            // Close statement
+            mysqli_stmt_close($stmt);
+        }
+    }
+    
+    // Close connection
+    mysqli_close($conn);
+}
+?>
+ 
 <!DOCTYPE html>
 <html lang="en">
 
@@ -71,20 +214,28 @@
                                     </div>
                                 </div>
                             </div>
-                            <form action="#!">
+                            <?php 
+        if(!empty($login_err)){
+            echo '<div class="alert alert-danger">' . $login_err . '</div>';
+        }        
+        ?>
+
+                            <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post">
                                 <div class="row gy-3 overflow-hidden">
                                     <div class="col-12">
                                         <div class="form-floating mb-3">
-                                            <input type="email" class="form-control" name="email" id="email"
+                                            <input type="text" class="form-control <?php echo (!empty($username_err)) ? 'is-invalid' : ''; ?>" value="<?php echo $username; ?>" name="username" id="email"
                                                 placeholder="name@example.com" required>
-                                            <label for="email" class="form-label">Email</label>
+                                            <label for="email" class="form-label">Username</label>
+                                            <span class="invalid-feedback"><?php echo $username_err; ?></span>
                                         </div>
                                     </div>
                                     <div class="col-12">
                                         <div class="form-floating mb-3">
-                                            <input type="password" class="form-control" name="password" id="password"
+                                            <input type="password" class="form-control <?php echo (!empty($password_err)) ? 'is-invalid' : ''; ?>" name="password" id="password"
                                                 value="" placeholder="Password" required>
                                             <label for="password" class="form-label">Password</label>
+                                            <span class="invalid-feedback"><?php echo $password_err; ?></span>
                                         </div>
                                     </div>
                                     <div class="col-12">
@@ -119,7 +270,7 @@
                                 <div class="col-12">
                                     <p class="mt-5 mb-4">Or continue with</p>
                                     <div class="d-flex gap-3 flex-column">
-                                        <a href="#!" class="btn bsb-btn-xl btn-danger">
+                                        <a href="<?= $login_url ?>" class="btn bsb-btn-xl btn-danger">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
                                                 fill="currentColor" class="bi bi-google" viewBox="0 0 16 16">
                                                 <path

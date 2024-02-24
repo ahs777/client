@@ -1,3 +1,101 @@
+<?php 
+include ("conn.php");
+$username = $password = $confirm_password = "";
+$username_err = $password_err = $confirm_password_err = "";
+// Processing form data when form is submitted
+if($_SERVER["REQUEST_METHOD"] == "POST"){
+    
+    $firstname= $_POST['firstname'];
+    $lastname = $_POST['lastname'];
+    $email = $_POST['email'];
+    $phonenumber = $_POST['phone'];
+    // Validate username
+    if(empty(trim($_POST["username"]))){
+        $username_err = "Please enter a username.";
+    } elseif(!preg_match('/^[a-zA-Z0-9_]+$/', trim($_POST["username"]))){
+        $username_err = "Username can only contain letters, numbers, and underscores.";
+    } else{
+        // Prepare a select statement
+        $sql = "SELECT u_id FROM front_users WHERE username = ?";
+        
+        if($stmt = mysqli_prepare($conn, $sql)){
+            // Bind variables to the prepared statement as parameters
+            mysqli_stmt_bind_param($stmt, "s", $param_username);
+            
+            // Set parameters
+            $param_username = trim($_POST["username"]);
+            
+            // Attempt to execute the prepared statement
+            if(mysqli_stmt_execute($stmt)){
+                /* store result */
+                mysqli_stmt_store_result($stmt);
+                
+                if(mysqli_stmt_num_rows($stmt) == 1){
+                    $username_err = "This username is already taken.";
+                } else{
+                    $username = trim($_POST["username"]);
+                }
+            } else{
+                echo "Oops! Something went wrong. Please try again later.";
+            }
+
+            // Close statement
+            mysqli_stmt_close($stmt);
+        }
+    }
+    
+    // Validate password
+    if(empty(trim($_POST["password"]))){
+        $password_err = "Please enter a password.";     
+    } elseif(strlen(trim($_POST["password"])) < 6){
+        $password_err = "Password must have atleast 6 characters.";
+    } else{
+        $password = trim($_POST["password"]);
+    }
+    
+    // Validate confirm password
+    if(empty(trim($_POST["confirm_password"]))){
+        $confirm_password_err = "Please confirm password.";     
+    } else{
+        $confirm_password = trim($_POST["confirm_password"]);
+        if(empty($password_err) && ($password != $confirm_password)){
+            $confirm_password_err = "Password did not match.";
+        }
+    }
+    
+    // Check input errors before inserting in database
+    if(empty($username_err) && empty($password_err) && empty($confirm_password_err)){
+        
+        // Prepare an insert statement
+        $sql = "INSERT INTO `front_users`(`u_first_name`, `u_last_name`, `u_email`, `u_phone_number`, `username` ,`u_password` ) 
+        VALUES ('$firstname','$lastname','$email','$phonenumber',?, ?)"; // Added comma
+        
+         
+        if($stmt = mysqli_prepare($conn, $sql)){
+            // Bind variables to the prepared statement as parameters
+            mysqli_stmt_bind_param($stmt, "ss", $param_username, $param_password);
+            
+            // Set parameters
+            $param_username = $username;
+            $param_password = password_hash($password, PASSWORD_DEFAULT); // Creates a password hash
+            
+            // Attempt to execute the prepared statement
+            if(mysqli_stmt_execute($stmt)){
+                // Redirect to login page
+                header("location: login.php");
+            } else{
+                echo "Oops! Something went wrong. Please try again later.";
+            }
+
+            // Close statement
+            mysqli_stmt_close($stmt);
+        }
+    }
+    
+    // Close connection
+    mysqli_close($conn);
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 
@@ -71,7 +169,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <form action="#!">
+                            <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post">
                                 <div class="row gy-3 overflow-hidden">
                                     <div class="col-12">
                                         <div class="form-floating mb-3">
@@ -88,7 +186,14 @@
                                         </div>
                                     </div>
 
-
+                                    <div class="col-12">
+                                        <div class="form-floating mb-3">
+                                            <input type="name" class="form-control<?php echo (!empty($username_err)) ? 'is-invalid' : ''; ?>" value="<?php echo $username; ?>" name="username" id="lastname"
+                                                placeholder="Lastname" required>
+                                            <label for="lastname" class="form-label">Username</label>
+                                            <span class="invalid-feedback"><?php echo $username_err; ?></span>
+                                        </div>
+                                    </div>
                                     <div class="col-12">
                                         <div class="form-floating mb-3">
                                             <input type="email" class="form-control" name="email" id="email"
@@ -97,27 +202,36 @@
                                         </div>
                                     </div>
 
-                                    <div class="col-12">
+                                    <!-- <div class="col-12">
                                         <div class="form-floating mb-3">
                                             <input type="tel" class="form-control" name="phone" id="phone"
                                                 placeholder="123-456-7890" pattern="[0-9]{3}-[0-9]{3}-[0-9]{4}"
                                                 required>
                                             <label for="phone" class="form-label">Phone Number</label>
                                         </div>
+                                    </div> -->
+                                    <div class="col-12">
+                                        <div class="form-floating mb-3">
+                                            <input type="text" class="form-control" name="phone" id="phone"
+                                                placeholder="+923000000000" required>
+                                            <label for="phone" class="form-label">Phone Number</label>
+                                        </div>
                                     </div>
 
                                     <div class="col-12">
                                         <div class="form-floating mb-3">
-                                            <input type="password" class="form-control" name="password" id="password"
+                                            <input type="password" class="form-control<?php echo (!empty($password_err)) ? 'is-invalid' : ''; ?>" value="<?php echo $password; ?>" name="password" id="password"
                                                 value="" placeholder="Password" required>
                                             <label for="password" class="form-label">Password</label>
+                                            <span class="invalid-feedback"><?php echo $password_err; ?></span>
                                         </div>
                                     </div>
                                     <div class="col-12">
                                         <div class="form-floating mb-3">
-                                            <input type="password" class="form-control" name="password" id="password"
+                                            <input type="password" class="form-control <?php echo (!empty($confirm_password_err)) ? 'is-invalid' : ''; ?>" value="<?php echo $confirm_password; ?>" name="confirm_password" id="password"
                                                 value="" placeholder="Password" required>
                                             <label for="password" class="form-label">Confirm Password</label>
+                                            <span class="invalid-feedback"><?php echo $confirm_password_err; ?></span>
                                         </div>
                                     </div>
                                     <div class="col-12">
@@ -132,8 +246,7 @@
                                     </div>
                                     <div class="col-12">
                                         <div class="d-grid">
-                                            <button class="btn bsb-btn-2xl btn-primary" type="submit">Log in
-                                                now</button>
+                                            <button class="btn bsb-btn-2xl btn-primary" type="submit">Register</button>
                                         </div>
                                     </div>
                                 </div>
